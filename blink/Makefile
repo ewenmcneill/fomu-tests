@@ -1,10 +1,13 @@
+# Converted to place and route with arachne-pnr
+# http://www.clifford.at/icestorm/
+#
 PACKAGE   ?= $(notdir $(realpath .))
 TOP       ?= $(PACKAGE)
 
 GIT_VERSION := $(shell git describe --tags)
 
 # Default programs
-NEXTPNR   ?= nextpnr-ice40
+ARACHNE   ?= arachne-pnr
 YOSYS     ?= yosys
 ICEPACK   ?= icepack
 
@@ -24,12 +27,12 @@ FOMU_REV  ?= evt3
 ifeq ($(FOMU_REV),evt3)
 PCF       ?= $(PCF_PATH)/fomu-evt3.pcf
 PKG       ?= sg48
-PNRFLAGS  ?= --up5k --package $(PKG)
+PNRFLAGS  ?= -d 5k -P $(PKG)
 else
 ifeq ($(FOMU_REV),evt2)
 PCF       ?= $(PCF_PATH)/fomu-evt2.pcf
 PKG       ?= sg48
-PNRFLAGS  ?= --up5k --package $(PKG)
+PNRFLAGS  ?= -d 5k -P $(PKG)
 else
 $(error Unrecognized FOMU_REV value. must be "evt2" or "evt3")
 endif
@@ -52,9 +55,13 @@ $(BUILD_DIR)/$(PACKAGE).json: $(VSOURCES) | $(BUILD_DIR)
 	$(QUIET) echo " SYNTH    $@"
 	$(QUIET) $(YOSYS) -p 'synth_ice40 -top $(TOP) -json $@' $(PACKAGE).v
 
-$(BUILD_DIR)/$(PACKAGE).asc: $(BUILD_DIR)/$(PACKAGE).json $(PCF)
+$(BUILD_DIR)/$(PACKAGE).blif: $(VSOURCES) | $(BUILD_DIR)
+	$(QUIET) echo " SYNTH    $@"
+	$(QUIET) $(YOSYS) -p "synth_ice40 -top $(TOP) -blif $@" $(PACKAGE).v
+
+$(BUILD_DIR)/$(PACKAGE).asc: $(BUILD_DIR)/$(PACKAGE).blif $(PCF)
 	$(QUIET) echo " PNR      $@"
-	$(QUIET) $(NEXTPNR) $(PNRFLAGS) --json $(BUILD_DIR)/$(PACKAGE).json --pcf $(PCF) --asc $@
+	$(QUIET) $(ARACHNE) $(PNRFLAGS) $(BUILD_DIR)/$(PACKAGE).blif -p $(PCF) -o $@
 
 $(TARGET): $(BUILD_DIR)/$(PACKAGE).asc
 	$(QUIET) echo " PACK     $@"
@@ -68,6 +75,8 @@ $(BUILD_DIR):
 clean:
 	$(QUIET) echo "  RM      $(subst /,$(PATH_SEP),$(wildcard $(BUILD_DIR)/*.json))"
 	-$(QUIET) $(RM) $(subst /,$(PATH_SEP),$(wildcard $(BUILD_DIR)/*.json))
+	$(QUIET) echo "  RM      $(subst /,$(PATH_SEP),$(wildcard $(BUILD_DIR)/*.blif))"
+	-$(QUIET) $(RM) $(subst /,$(PATH_SEP),$(wildcard $(BUILD_DIR)/*.blif))
 	$(QUIET) echo "  RM      $(subst /,$(PATH_SEP),$(wildcard $(BUILD_DIR)/*.asc))"
 	-$(QUIET) $(RM) $(subst /,$(PATH_SEP),$(wildcard $(BUILD_DIR)/*.asc))
 	$(QUIET) echo "  RM      $(TARGET) $(PACKAGE).bin"
